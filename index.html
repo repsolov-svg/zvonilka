@@ -1,0 +1,637 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<meta name="robots" content="noindex, nofollow">
+<title>Наша звонилка</title>
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>📞</text></svg>">
+<script src="peerjs.min.js"></script>
+<style>
+  :root{
+    --accent:#2F6BFF; --green:#1DA83C; --red:#E03131; --dark:#182033;
+    --gray:#6B7280; --bg:#F4F6FB; --card:#FFFFFF; --warn:#B7791F;
+  }
+  *{box-sizing:border-box; -webkit-tap-highlight-color:transparent;}
+  html,body{height:100%;}
+  body{
+    margin:0; background:var(--bg); color:var(--dark);
+    font-family:system-ui,-apple-system,"Segoe UI",Roboto,Arial,sans-serif;
+    font-size:18px;
+  }
+  .screen{display:none; min-height:100dvh; flex-direction:column; align-items:center; padding:24px 20px calc(20px + env(safe-area-inset-bottom));}
+  .screen.active{display:flex;}
+  h1{font-size:30px; margin:18px 0 6px; text-align:center;}
+  .sub{color:var(--gray); text-align:center; margin:0 0 26px; font-size:17px; line-height:1.45;}
+  .btn{
+    display:flex; align-items:center; justify-content:center; gap:12px;
+    width:100%; max-width:420px; border:none; border-radius:18px;
+    padding:20px; font-size:22px; font-weight:700; cursor:pointer;
+    color:#fff; background:var(--accent); font-family:inherit;
+  }
+  .btn:active{transform:scale(.985);}
+  .btn.green{background:var(--green);}
+  .btn.red{background:var(--red);}
+  .btn.ghost{background:#E7EBF5; color:var(--dark);}
+  .btn.small{padding:14px; font-size:18px; border-radius:14px;}
+  .btn[disabled]{opacity:.45; cursor:default;}
+  .role-btn{margin-bottom:16px; font-size:24px; padding:24px;}
+  .card{
+    background:var(--card); border-radius:20px; padding:20px;
+    width:100%; max-width:420px; margin-bottom:16px;
+    box-shadow:0 2px 10px rgba(24,32,51,.06); position:relative;
+  }
+  .card.req{border:2px solid var(--accent);}
+  .person{display:flex; align-items:center; gap:14px; margin-bottom:16px;}
+  .avatar{width:54px; height:54px; border-radius:50%; background:#EEF2FF; display:flex; align-items:center; justify-content:center; font-size:28px; flex:none;}
+  .pname{font-size:22px; font-weight:700; word-break:break-word;}
+  .pstatus{display:flex; align-items:center; gap:7px; color:var(--gray); font-size:16px; margin-top:2px;}
+  .dot{width:12px; height:12px; border-radius:50%; background:#C3C9D5; flex:none;}
+  .dot.on{background:var(--green);}
+  .kick{position:absolute; top:12px; right:14px; border:none; background:none; color:#C3C9D5; font-size:20px; cursor:pointer; padding:6px;}
+  .statusbar{
+    margin-top:auto; padding-top:18px; color:var(--gray); font-size:14px;
+    text-align:center; line-height:1.5;
+  }
+  .me-badge{background:#EEF2FF; color:var(--accent); border-radius:999px; padding:6px 14px; font-weight:700; font-size:15px;}
+  a.small{color:var(--gray); font-size:14px;}
+  input.name{
+    width:100%; max-width:420px; font-size:22px; padding:18px; border-radius:16px;
+    border:2px solid #D6DCEA; margin-bottom:16px; font-family:inherit; text-align:center;
+  }
+  input.name:focus{outline:none; border-color:var(--accent);}
+  .spin{width:52px; height:52px; border:5px solid #D6DCEA; border-top-color:var(--accent); border-radius:50%; animation:sp 1s linear infinite; margin-bottom:22px;}
+  @keyframes sp{to{transform:rotate(360deg)}}
+  .fullscreen{position:fixed; inset:0; background:#0E1424; color:#fff; z-index:50; display:none; flex-direction:column; align-items:center; justify-content:center; padding:24px;}
+  .fullscreen.active{display:flex;}
+  .big-avatar{width:120px; height:120px; border-radius:50%; background:#22304F; display:flex; align-items:center; justify-content:center; font-size:64px; margin-bottom:22px;}
+  .call-name{font-size:32px; font-weight:800; margin-bottom:8px; text-align:center; word-break:break-word;}
+  .call-state{font-size:19px; color:#9FB0D0; margin-bottom:40px; text-align:center;}
+  .pulse{animation:pulse 1.6s ease-in-out infinite;}
+  @keyframes pulse{0%,100%{transform:scale(1)}50%{transform:scale(1.07)}}
+  .call-actions{display:flex; gap:22px; width:100%; max-width:420px; justify-content:center;}
+  .round{
+    width:82px; height:82px; border-radius:50%; border:none; font-size:34px; color:#fff;
+    display:flex; align-items:center; justify-content:center; cursor:pointer; flex-direction:column;
+  }
+  .round small{font-size:12px; margin-top:2px; font-weight:600;}
+  .round.green{background:var(--green);} .round.red{background:var(--red);}
+  .round.gray{background:#31405F;} .round.gray.off{background:#E9B949; color:#182033;}
+  #videoWrap{position:fixed; inset:0; background:#000; z-index:60; display:none;}
+  #videoWrap.active{display:block;}
+  #remoteVideo{width:100%; height:100%; object-fit:cover; background:#000;}
+  #localVideo{
+    position:absolute; top:calc(14px + env(safe-area-inset-top)); right:14px;
+    width:110px; height:150px; object-fit:cover; border-radius:14px;
+    border:2px solid rgba(255,255,255,.55); background:#111; z-index:2;
+  }
+  #callBar{
+    position:absolute; left:0; right:0; bottom:0; z-index:3;
+    padding:18px 16px calc(22px + env(safe-area-inset-bottom));
+    display:flex; gap:18px; justify-content:center;
+    background:linear-gradient(transparent, rgba(0,0,0,.65));
+  }
+  #callBar .round{width:70px; height:70px; font-size:28px;}
+  #callInfo{
+    position:absolute; top:calc(14px + env(safe-area-inset-top)); left:16px; z-index:3;
+    background:rgba(0,0,0,.45); border-radius:12px; padding:8px 14px; font-size:16px; color:#fff;
+  }
+  #toast{
+    position:fixed; left:50%; transform:translateX(-50%);
+    bottom:calc(30px + env(safe-area-inset-bottom)); z-index:99;
+    background:#182033; color:#fff; border-radius:14px; padding:14px 20px;
+    font-size:17px; max-width:90vw; text-align:center; display:none; line-height:1.4;
+  }
+  #debugLog{display:none; position:fixed; top:0; left:0; right:0; max-height:40vh; overflow:auto; background:rgba(0,0,0,.85); color:#8f8; font:11px monospace; z-index:100; padding:6px; white-space:pre-wrap;}
+</style>
+</head>
+<body>
+
+<!-- ЭКРАН: кто вы -->
+<div class="screen active" id="scrRole">
+  <h1>📞 Наша звонилка</h1>
+  <p class="sub">Семейная связь Рамиля.<br>Нажмите, кто вы. Вход разрешает Рамиль.</p>
+  <button class="btn role-btn" data-label="Родители" data-emoji="👨‍👩‍👦">👨‍👩‍👦 Мы — родители</button>
+  <button class="btn role-btn" data-label="Жена" data-emoji="👩">👩 Я — жена</button>
+  <button class="btn role-btn ghost" id="btnOther">🙋 Я — кто-то другой</button>
+  <button class="btn role-btn ghost" id="btnAdmin" style="font-size:18px; padding:16px;">👨 Я — Рамиль (владелец)</button>
+  <div class="statusbar">Личная звонилка. Посторонним сюда нельзя.</div>
+</div>
+
+<!-- ЭКРАН: имя гостя -->
+<div class="screen" id="scrName">
+  <h1>Как вас зовут?</h1>
+  <p class="sub">Имя увидят Рамиль и семья</p>
+  <input class="name" id="guestName" maxlength="20" placeholder="Например: Дядя Марат">
+  <button class="btn" id="btnSendName">Отправить запрос</button>
+  <button class="btn ghost small" id="btnNameBack" style="margin-top:12px;">← назад</button>
+</div>
+
+<!-- ЭКРАН: ждём одобрения -->
+<div class="screen" id="scrWait">
+  <div style="flex:1"></div>
+  <div class="spin"></div>
+  <h1 style="font-size:24px;">Ждём разрешения Рамиля</h1>
+  <p class="sub" id="waitHint">Запрос отправлен. Как только Рамиль нажмёт «Разрешить» — всё заработает само.</p>
+  <div style="flex:1"></div>
+  <button class="btn ghost small" id="btnWaitCancel">Отменить</button>
+  <div class="statusbar"><span id="waitState"></span></div>
+</div>
+
+<!-- ЭКРАН: главный -->
+<div class="screen" id="scrHome">
+  <h1>📞 Наша звонилка</h1>
+  <p class="sub"><span class="me-badge" id="meBadge"></span></p>
+  <div id="reqList" style="width:100%; display:flex; flex-direction:column; align-items:center;"></div>
+  <div id="peopleList" style="width:100%; display:flex; flex-direction:column; align-items:center;"></div>
+  <div class="card" style="text-align:center; color:var(--gray); font-size:16px; line-height:1.5;">
+    Чтобы вам могли позвонить — держите эту страницу открытой.
+    Зелёная точка — человек сейчас в звонилке.
+  </div>
+  <div class="statusbar">
+    <span id="connState">Подключаемся…</span><br>
+    <a class="small" href="#" id="changeRole">выйти и сменить, кто я</a>
+  </div>
+</div>
+
+<!-- Исходящий вызов -->
+<div class="fullscreen" id="scrOut">
+  <div class="big-avatar pulse" id="outAvatar">👤</div>
+  <div class="call-name" id="outName"></div>
+  <div class="call-state">Звоним… ждите гудков</div>
+  <div class="call-actions">
+    <button class="round red" id="btnCancelOut">✕<small>отмена</small></button>
+  </div>
+</div>
+
+<!-- Входящий вызов -->
+<div class="fullscreen" id="scrIn">
+  <div class="big-avatar pulse" id="inAvatar">👤</div>
+  <div class="call-name" id="inName"></div>
+  <div class="call-state">звонит вам по видео</div>
+  <div class="call-actions">
+    <button class="round red" id="btnDecline">✕<small>сбросить</small></button>
+    <button class="round green pulse" id="btnAccept">✔<small>ответить</small></button>
+  </div>
+</div>
+
+<!-- Разговор -->
+<div id="videoWrap">
+  <video id="remoteVideo" autoplay playsinline></video>
+  <video id="localVideo" autoplay playsinline muted></video>
+  <div id="callInfo"><span id="callWith"></span> · <span id="callTimer">00:00</span></div>
+  <div id="callBar">
+    <button class="round gray" id="btnMic">🎙<small>звук</small></button>
+    <button class="round gray" id="btnCam">🎥<small>видео</small></button>
+    <button class="round red" id="btnHangup">✕<small>завершить</small></button>
+  </div>
+</div>
+
+<div id="toast"></div>
+<div id="debugLog"></div>
+
+<script>
+'use strict';
+/* ================== НАСТРОЙКИ ================== */
+const SECRET = 'kx7m2r9v-rf-ksa';     // адресный префикс семьи (не даёт прав — вход только через одобрение)
+const ADMIN_SLUG = 'ramil';           // адрес владельца — сюда идут запросы на вход
+const ICE_SERVERS = [
+  {urls:['stun:stun.l.google.com:19302','stun:stun1.l.google.com:19302']},
+  {urls:'stun:stun.cloudflare.com:3478'},
+  {urls:'turn:openrelay.metered.ca:80',  username:'openrelayproject', credential:'openrelayproject'},
+  {urls:'turn:openrelay.metered.ca:443', username:'openrelayproject', credential:'openrelayproject'},
+  {urls:'turn:openrelay.metered.ca:443?transport=tcp', username:'openrelayproject', credential:'openrelayproject'},
+  {urls:'turn:standard.relay.metered.ca:80',  username:'openrelayproject', credential:'openrelayproject'},
+  {urls:'turn:standard.relay.metered.ca:443', username:'openrelayproject', credential:'openrelayproject'},
+];
+const PRESENCE_RETRY_MS = 7000;
+const CALL_TIMEOUT_MS = 45000;
+/* =============================================== */
+
+const $ = id => document.getElementById(id);
+const debugOn = location.search.includes('debug');
+if (debugOn) $('debugLog').style.display = 'block';
+function log(...a){ if(debugOn){ $('debugLog').textContent += a.join(' ') + '\n'; } try{ console.log('[zv]',...a);}catch(e){} }
+const rand = n => Array.from(crypto.getRandomValues(new Uint8Array(n))).map(b=>'abcdefghjkmnpqrstuvwxyz23456789'[b%31]).join('');
+const peerIdOf = slug => `zv-${SECRET}-${slug}`;
+
+/* ---------- состояние ---------- */
+let me = load('zvMe');            // {slug,label,emoji,token}
+let roster = load('zvRoster')||[];// [{slug,label,emoji,token}]
+let isAdmin = localStorage.getItem('zvAdmin')==='1';
+let pendingReqs = [];             // [{member, conn}]
+let peer=null, myStream=null, activeCall=null, incomingCall=null;
+let ringOsc=null, audioCtx=null, callTimerInt=null, callStart=0, wakeLock=null, outTimeout=null;
+const links={}, online={}, retries={};
+
+function load(k){ try{ return JSON.parse(localStorage.getItem(k)); }catch(e){ return null; } }
+function save(k,v){ localStorage.setItem(k, JSON.stringify(v)); }
+function member(slug){ return roster.find(m=>m.slug===slug); }
+
+/* ---------- экраны/утилиты ---------- */
+function show(id){
+  document.querySelectorAll('.screen,.fullscreen,#videoWrap').forEach(e=>e.classList.remove('active'));
+  $(id).classList.add('active');
+}
+function toast(msg, ms=4500){
+  const t=$('toast'); t.textContent=msg; t.style.display='block';
+  clearTimeout(t._h); t._h=setTimeout(()=>t.style.display='none', ms);
+}
+function unlockAudio(){
+  if(!audioCtx){ try{ audioCtx = new (window.AudioContext||window.webkitAudioContext)(); }catch(e){} }
+  if(audioCtx && audioCtx.state==='suspended') audioCtx.resume();
+}
+function startRing(incoming){
+  stopRing(); if(!audioCtx) return;
+  const play = () => {
+    if(!ringOsc) return;
+    const o=audioCtx.createOscillator(), g=audioCtx.createGain();
+    o.frequency.value = incoming?880:425; g.gain.value=0.12;
+    o.connect(g); g.connect(audioCtx.destination);
+    o.start(); setTimeout(()=>{try{o.stop()}catch(e){}}, incoming?700:900);
+  };
+  ringOsc=setInterval(play, incoming?1400:2000); play();
+}
+function stopRing(){ if(ringOsc){ clearInterval(ringOsc); ringOsc=null; } }
+
+/* ---------- выбор роли ---------- */
+document.querySelectorAll('.role-btn[data-label]').forEach(b=>{
+  b.addEventListener('click', ()=>{ unlockAudio(); requestJoin(b.dataset.label, b.dataset.emoji); });
+});
+$('btnOther').addEventListener('click', ()=>{ unlockAudio(); show('scrName'); $('guestName').focus(); });
+$('btnNameBack').addEventListener('click', ()=> show('scrRole'));
+$('btnSendName').addEventListener('click', ()=>{
+  const name = $('guestName').value.trim();
+  if(name.length < 2){ toast('Напишите имя'); return; }
+  requestJoin(name, '🙋');
+});
+$('btnAdmin').addEventListener('click', ()=>{
+  unlockAudio();
+  if(!me || !isAdmin){
+    me = { slug: ADMIN_SLUG, label:'Рамиль', emoji:'👨', token: rand(18) };
+    isAdmin = true;
+    if(!member(ADMIN_SLUG)) roster.push(me); else roster = roster.map(m=>m.slug===ADMIN_SLUG?me:m);
+    save('zvMe', me); save('zvRoster', roster); localStorage.setItem('zvAdmin','1');
+  }
+  enterHome();
+});
+$('changeRole').addEventListener('click', e=>{
+  e.preventDefault();
+  if(confirm('Выйти? Для возврата понадобится новое разрешение Рамиля.')){
+    localStorage.removeItem('zvMe'); if(!isAdmin) localStorage.removeItem('zvRoster');
+    location.reload();
+  }
+});
+$('btnWaitCancel').addEventListener('click', ()=>{
+  localStorage.removeItem('zvMe'); location.reload();
+});
+
+/* заявка на вход */
+function requestJoin(label, emoji){
+  if(!me || me.token){ me = null; }
+  me = me || { slug:'g'+rand(8), label, emoji, token:null };
+  me.label = label; me.emoji = emoji;
+  save('zvMe', me);
+  show('scrWait');
+  startPeer();
+}
+
+function enterHome(){
+  $('meBadge').textContent = me.emoji+' Вы: '+me.label+(isAdmin?' (владелец)':'');
+  renderPeople(); renderReqs();
+  show('scrHome');
+  startPeer();
+}
+
+/* ---------- список людей ---------- */
+function renderPeople(){
+  const wrap = $('peopleList'); wrap.innerHTML='';
+  roster.filter(m=>m.slug!==me.slug).forEach(m=>{
+    const card = document.createElement('div'); card.className='card';
+    card.innerHTML = `
+      ${isAdmin?`<button class="kick" data-slug="${m.slug}" title="убрать из звонилки">✕</button>`:''}
+      <div class="person">
+        <div class="avatar">${m.emoji}</div>
+        <div>
+          <div class="pname">${m.label}</div>
+          <div class="pstatus"><span class="dot" id="dot-${m.slug}"></span><span id="st-${m.slug}">проверяем…</span></div>
+        </div>
+      </div>
+      <button class="btn green" data-call="${m.slug}">📞 Позвонить</button>`;
+    wrap.appendChild(card);
+  });
+  wrap.querySelectorAll('[data-call]').forEach(b=> b.addEventListener('click', ()=>{ unlockAudio(); startCall(b.dataset.call); }));
+  wrap.querySelectorAll('.kick').forEach(b=> b.addEventListener('click', ()=>{
+    const m = member(b.dataset.slug);
+    if(m && confirm('Убрать «'+m.label+'» из звонилки? Звонить он больше не сможет.')){
+      roster = roster.filter(x=>x.slug!==m.slug); save('zvRoster', roster);
+      try{ if(links[m.slug]) links[m.slug].close(); }catch(e){}
+      broadcastRoster(); renderPeople();
+    }
+  }));
+  Object.keys(online).forEach(s=>setOnline(s, online[s]));
+}
+function setOnline(slug, on){
+  online[slug]=on;
+  const d=$('dot-'+slug), s=$('st-'+slug);
+  if(d) d.classList.toggle('on', on);
+  if(s) s.textContent = on ? 'в сети — можно звонить' : 'не в звонилке';
+}
+
+/* ---------- заявки (у админа) ---------- */
+function renderReqs(){
+  const wrap=$('reqList'); wrap.innerHTML='';
+  pendingReqs.forEach((r,i)=>{
+    const card=document.createElement('div'); card.className='card req';
+    card.innerHTML = `
+      <div class="person">
+        <div class="avatar">${r.member.emoji}</div>
+        <div><div class="pname">${r.member.label}</div>
+        <div class="pstatus">просит доступ в звонилку</div></div>
+      </div>
+      <div style="display:flex; gap:10px;">
+        <button class="btn green small" data-ok="${i}">✔ Разрешить</button>
+        <button class="btn red small" data-no="${i}">✕ Нет</button>
+      </div>`;
+    wrap.appendChild(card);
+  });
+  wrap.querySelectorAll('[data-ok]').forEach(b=> b.addEventListener('click', ()=>approve(+b.dataset.ok, true)));
+  wrap.querySelectorAll('[data-no]').forEach(b=> b.addEventListener('click', ()=>approve(+b.dataset.no, false)));
+}
+function approve(i, yes){
+  const r = pendingReqs[i]; if(!r) return;
+  pendingReqs.splice(i,1); renderReqs();
+  if(yes){
+    const entry = { ...r.member, token: rand(18) };
+    roster = roster.filter(m=>m.slug!==entry.slug && m.label!==entry.label); // замена устройства той же роли
+    roster.push(entry); save('zvRoster', roster);
+    try{ r.conn.send({t:'ok', member:entry, roster}); }catch(e){}
+    broadcastRoster(); renderPeople();
+    toast('«'+entry.label+'» добавлен ✅');
+  } else {
+    try{ r.conn.send({t:'no'}); }catch(e){}
+  }
+}
+function broadcastRoster(){
+  Object.values(links).forEach(c=>{ try{ if(c.open) c.send({t:'roster', roster}); }catch(e){} });
+}
+
+/* ---------- PeerJS ---------- */
+function startPeer(){
+  if(peer) return;
+  setConn('Подключаемся…');
+  const opts = { config:{ iceServers: ICE_SERVERS }, debug:1 };
+  const srv = new URLSearchParams(location.search).get('srv');
+  if(srv){
+    const [h,p]=srv.split(':');
+    opts.host=h; opts.port=p?+p:443; opts.path='/';
+    opts.secure=(h!=='localhost'&&h!=='127.0.0.1');
+  }
+  peer = new Peer(peerIdOf(me.slug), opts);
+
+  peer.on('open', ()=>{
+    log('peer open', peer.id);
+    setConn('Подключено ✅');
+    if(me.token){ refreshLinks(); }
+    else { linkToAdmin(); }
+  });
+
+  peer.on('connection', c=>{
+    c.on('data', d=>onData(c, d));
+    c.on('open', ()=>{
+      const slug = c.metadata && c.metadata.slug;
+      const token = c.metadata && c.metadata.token;
+      if(slug && token && member(slug) && member(slug).token===token){
+        bindLink(slug, c); // член семьи — presence
+      }
+      // незнакомцев не отключаем сразу: ждём их заявку {t:'join'} (имеет смысл только у админа)
+    });
+  });
+
+  peer.on('call', call=>{
+    const md = call.metadata||{};
+    const m = member(md.from);
+    if(!m || !md.token || m.token!==md.token){ log('call rejected: no pass'); try{call.close();}catch(e){} return; }
+    if(activeCall || incomingCall){ try{call.close();}catch(e){} return; }
+    incomingCall = call;
+    $('inAvatar').textContent=m.emoji; $('inName').textContent=m.label;
+    show('scrIn'); startRing(true);
+    call.on('close', ()=>{ if(incomingCall===call){ hideIncoming(); toast('Звонок отменён'); } });
+    call.on('error', ()=>{ if(incomingCall===call) hideIncoming(); });
+  });
+
+  peer.on('disconnected', ()=>{
+    setConn('Переподключаемся…');
+    setTimeout(()=>{ try{ peer.reconnect(); }catch(e){} }, 1500);
+  });
+
+  peer.on('error', err=>{
+    log('peer error', err.type, err.message||'');
+    if(err.type==='unavailable-id'){
+      setConn('Ошибка');
+      toast('Звонилка уже открыта на другом устройстве под этим именем. Закройте её там.', 8000);
+    } else if(err.type!=='peer-unavailable'){
+      setConn('Нет связи с сервером, пробуем ещё…');
+    }
+  });
+}
+function setConn(s){ $('connState').textContent=s; const w=$('waitState'); if(w) w.textContent=s; }
+
+/* данные по p2p-каналам */
+function onData(c, d){
+  if(!d || typeof d!=='object') return;
+  if(d.t==='join' && isAdmin){
+    if(d.member && d.member.slug && d.member.label){
+      pendingReqs = pendingReqs.filter(r=>r.member.slug!==d.member.slug);
+      pendingReqs.push({member:{slug:String(d.member.slug).slice(0,24), label:String(d.member.label).slice(0,24), emoji:String(d.member.emoji||'🙋').slice(0,8)}, conn:c});
+      renderReqs(); toast('Запрос на вход: '+d.member.label);
+      try{ if(navigator.vibrate) navigator.vibrate([200,100,200]); }catch(e){}
+    }
+  }
+  else if(d.t==='ok' && !me.token){
+    me = d.member; roster = d.roster||[d.member];
+    save('zvMe', me); save('zvRoster', roster);
+    enterHome(); toast('Рамиль разрешил! Добро пожаловать 👋');
+    refreshLinks();
+  }
+  else if(d.t==='no' && !me.token){
+    localStorage.removeItem('zvMe');
+    toast('Рамиль отклонил запрос.', 6000);
+    setTimeout(()=>location.reload(), 1500);
+  }
+  else if(d.t==='roster'){
+    // список принимаем только от владельца
+    if(c.peer===peerIdOf(ADMIN_SLUG) && Array.isArray(d.roster) && !isAdmin){
+      roster=d.roster; save('zvRoster', roster);
+      if(!member(me.slug)){ // меня убрали
+        localStorage.removeItem('zvMe');
+        alert('Рамиль отключил вам доступ к звонилке.');
+        location.reload(); return;
+      }
+      me = member(me.slug); save('zvMe', me);
+      renderPeople();
+    }
+  }
+}
+
+/* заявка гостя: канал к админу */
+function linkToAdmin(){
+  const c = peer.connect(peerIdOf(ADMIN_SLUG), { metadata:{ join:true } });
+  let ok=false;
+  c.on('open', ()=>{
+    ok=true;
+    $('waitHint').textContent='Рамиль в сети! Запрос у него на экране — ждём нажатия «Разрешить».';
+    c.on('data', d=>onData(c,d));
+    c.send({t:'join', member:{slug:me.slug, label:me.label, emoji:me.emoji}});
+  });
+  const retry=()=>{ if(!me.token) setTimeout(linkToAdmin, PRESENCE_RETRY_MS); };
+  c.on('error', ()=>{ if(!ok){ $('waitHint').textContent='Рамиль сейчас не в звонилке. Попросите его открыть звонилку — запрос дойдёт сам, страницу не закрывайте.'; retry(); } });
+  c.on('close', ()=>{ if(!me.token) retry(); });
+}
+
+/* presence для членов семьи */
+function refreshLinks(){
+  roster.filter(m=>m.slug!==me.slug).forEach(m=>ensureLink(m.slug));
+}
+function ensureLink(slug){
+  if(!member(slug)) return;
+  if(links[slug] && links[slug].open) return;
+  try{
+    const c = peer.connect(peerIdOf(slug), { metadata:{ slug:me.slug, token:me.token } });
+    let settled=false;
+    c.on('open', ()=>{ settled=true; bindLink(slug, c); });
+    c.on('error', ()=>{ if(!settled){ setOnline(slug,false); scheduleRetry(slug); } });
+    setTimeout(()=>{ if(!settled && !(links[slug]&&links[slug].open)){ try{c.close()}catch(e){}; scheduleRetry(slug); } }, 5000);
+  }catch(e){ scheduleRetry(slug); }
+}
+function bindLink(slug, c){
+  links[slug]=c; setOnline(slug,true);
+  c.on('data', d=>onData(c,d));
+  if(isAdmin){ try{ c.send({t:'roster', roster}); }catch(e){} }
+  c.on('close', ()=>{ if(links[slug]===c){ setOnline(slug,false); scheduleRetry(slug); } });
+  c.on('error', ()=>{ if(links[slug]===c){ setOnline(slug,false); scheduleRetry(slug); } });
+}
+function scheduleRetry(slug){
+  clearTimeout(retries[slug]);
+  retries[slug]=setTimeout(()=>{ if(peer && !peer.destroyed && !peer.disconnected && me.token) ensureLink(slug); else scheduleRetry(slug); }, PRESENCE_RETRY_MS);
+}
+
+/* ---------- медиа ---------- */
+async function getMedia(){
+  const tries=[
+    { video:{ width:{ideal:960}, height:{ideal:540}, facingMode:'user' },
+      audio:{ echoCancellation:true, noiseSuppression:true, autoGainControl:true } },
+    { video:true, audio:true },
+    { video:false, audio:{ echoCancellation:true, noiseSuppression:true, autoGainControl:true } },
+  ];
+  for(const c of tries){
+    try{ const s=await navigator.mediaDevices.getUserMedia(c);
+      if(!c.video) toast('Камера недоступна — звонок только с голосом', 5000);
+      return s;
+    }catch(e){ log('gUM fail', e.name); }
+  }
+  throw new Error('no-media');
+}
+
+/* ---------- звонок ---------- */
+async function startCall(slug){
+  if(activeCall) return;
+  const m = member(slug); if(!m) return;
+  let stream;
+  try{ stream = await getMedia(); }
+  catch(e){ toast('Не удалось включить камеру и микрофон. Разрешите доступ в настройках браузера.', 7000); return; }
+  myStream=stream;
+  $('outAvatar').textContent=m.emoji; $('outName').textContent=m.label;
+  show('scrOut'); startRing(false);
+
+  const call = peer.call(peerIdOf(slug), stream, { metadata:{ from:me.slug, token:me.token } });
+  if(!call){ endEverything('Не получилось набрать. Попробуйте ещё раз.'); return; }
+  activeCall=call;
+
+  outTimeout=setTimeout(()=>{ if(activeCall===call && !call._answered){ endEverything(m.label+' не отвечает.'); } }, CALL_TIMEOUT_MS);
+
+  const onPeerErr = err=>{
+    if(err.type==='peer-unavailable' && String(err.message||'').includes(peerIdOf(slug))
+       && activeCall===call && !call._answered){
+      endEverything(m.label+' сейчас не в звонилке. Позвоните по телефону и попросите открыть страницу.');
+    }
+  };
+  peer.on('error', onPeerErr);
+  call.on('close', ()=>{ try{ peer.off('error', onPeerErr); }catch(e){} if(activeCall===call) endEverything('Звонок завершён.'); });
+  call.on('stream', remote=>{ call._answered=true; clearTimeout(outTimeout); connected(slug, remote); });
+  call.on('error', e=>{ log('call err', e); if(activeCall===call) endEverything('Связь оборвалась. Попробуйте перезвонить.'); });
+}
+
+$('btnCancelOut').addEventListener('click', ()=> endEverything('Звонок отменён.'));
+
+$('btnAccept').addEventListener('click', async ()=>{
+  unlockAudio();
+  const call=incomingCall; if(!call) return;
+  let stream;
+  try{ stream=await getMedia(); }
+  catch(e){ toast('Нет доступа к камере/микрофону. Разрешите доступ и попробуйте снова.', 7000); return; }
+  myStream=stream; incomingCall=null; stopRing();
+  activeCall=call;
+  const from=call.metadata.from;
+  call.answer(stream);
+  call.on('stream', remote=> connected(from, remote));
+  call.on('close', ()=> endEverything('Звонок завершён.'));
+  call.on('error', ()=> endEverything('Связь оборвалась. Попробуйте перезвонить.'));
+});
+$('btnDecline').addEventListener('click', ()=>{
+  const call=incomingCall; hideIncoming();
+  if(call){ try{ call.close(); }catch(e){} }
+});
+function hideIncoming(){ incomingCall=null; stopRing(); show('scrHome'); }
+
+function connected(slug, remoteStream){
+  stopRing();
+  const m=member(slug)||{emoji:'👤',label:'Собеседник'};
+  $('callWith').textContent=m.emoji+' '+m.label;
+  const rv=$('remoteVideo'), lv=$('localVideo');
+  rv.srcObject=remoteStream; lv.srcObject=myStream;
+  rv.play().catch(()=>{}); lv.play().catch(()=>{});
+  show('videoWrap');
+  callStart=Date.now(); clearInterval(callTimerInt);
+  callTimerInt=setInterval(()=>{
+    const s=Math.floor((Date.now()-callStart)/1000);
+    $('callTimer').textContent=String(Math.floor(s/60)).padStart(2,'0')+':'+String(s%60).padStart(2,'0');
+  },1000);
+  if('wakeLock' in navigator){ navigator.wakeLock.request('screen').then(w=>wakeLock=w).catch(()=>{}); }
+}
+
+$('btnMic').addEventListener('click', ()=>{
+  if(!myStream) return;
+  const t=myStream.getAudioTracks()[0]; if(!t) return;
+  t.enabled=!t.enabled;
+  $('btnMic').classList.toggle('off',!t.enabled);
+  $('btnMic').innerHTML=t.enabled?'🎙<small>звук</small>':'🔇<small>выкл</small>';
+});
+$('btnCam').addEventListener('click', ()=>{
+  if(!myStream) return;
+  const t=myStream.getVideoTracks()[0]; if(!t) return;
+  t.enabled=!t.enabled;
+  $('btnCam').classList.toggle('off',!t.enabled);
+  $('btnCam').innerHTML=t.enabled?'🎥<small>видео</small>':'🚫<small>выкл</small>';
+});
+$('btnHangup').addEventListener('click', ()=> endEverything('Звонок завершён.'));
+
+function endEverything(msg){
+  clearTimeout(outTimeout); clearInterval(callTimerInt); stopRing();
+  if(activeCall){ try{ activeCall.close(); }catch(e){} activeCall=null; }
+  incomingCall=null;
+  if(myStream){ myStream.getTracks().forEach(t=>t.stop()); myStream=null; }
+  if(wakeLock){ try{ wakeLock.release(); }catch(e){} wakeLock=null; }
+  $('remoteVideo').srcObject=null; $('localVideo').srcObject=null;
+  $('btnMic').innerHTML='🎙<small>звук</small>'; $('btnMic').classList.remove('off');
+  $('btnCam').innerHTML='🎥<small>видео</small>'; $('btnCam').classList.remove('off');
+  show('scrHome');
+  if(msg) toast(msg);
+}
+
+/* ---------- автозапуск ---------- */
+if(me && me.token){ enterHome(); }
+else if(me && !me.token){ show('scrWait'); startPeer(); }
+</script>
+</body>
+</html>
