@@ -49,6 +49,7 @@
   .pstatus{display:flex; align-items:center; gap:7px; color:var(--gray); font-size:16px; margin-top:2px;}
   .dot{width:12px; height:12px; border-radius:50%; background:#C3C9D5; flex:none;}
   .dot.on{background:var(--green);}
+  .dot.away{background:#E9B949;}
   .kick{position:absolute; top:12px; right:14px; border:none; background:none; color:#C3C9D5; font-size:20px; cursor:pointer; padding:6px;}
   .statusbar{
     margin-top:auto; padding-top:18px; color:var(--gray); font-size:14px;
@@ -152,7 +153,7 @@
   <div class="statusbar">
     <span id="connState">Подключаемся…</span><br>
     <a class="small" href="#" id="changeRole">выйти и сменить, кто я</a><br>
-    <span style="opacity:.55">версия 6</span>
+    <span style="opacity:.55">версия 7</span>
   </div>
 </div>
 
@@ -343,12 +344,30 @@ function renderPeople(){
   }));
   Object.keys(online).forEach(s=>setOnline(s, online[s]));
 }
+const lastHb={}, hiddenMap={};
 function setOnline(slug, on){
   online[slug]=on;
-  const d=$('dot-'+slug), s=$('st-'+slug);
-  if(d) d.classList.toggle('on', on);
-  if(s) s.textContent = on ? 'в сети — можно звонить' : 'не в звонилке';
+  if(on){ lastHb[slug]=Date.now(); }
+  refreshDot(slug);
 }
+function refreshDot(slug){
+  const d=$('dot-'+slug), s=$('st-'+slug);
+  if(!d||!s) return;
+  const fresh = links[slug] && links[slug].open && lastHb[slug] && (Date.now()-lastHb[slug] < 16000);
+  const away = fresh && hiddenMap[slug];
+  d.classList.toggle('on', !!fresh && !away);
+  d.classList.toggle('away', !!away);
+  s.textContent = !fresh ? 'не в звонилке'
+    : (away ? 'звонилка свёрнута — может не услышать' : 'в сети — можно звонить');
+}
+/* сердцебиение: без него зелёная точка может врать про уснувшую вкладку */
+setInterval(()=>{
+  Object.entries(links).forEach(([s,c])=>{ try{ if(c.open) c.send({t:'hb', hidden: !!document.hidden}); }catch(e){} });
+  Object.keys(links).forEach(refreshDot);
+}, 5000);
+document.addEventListener('visibilitychange', ()=>{
+  Object.values(links).forEach(c=>{ try{ if(c.open) c.send({t:'hb', hidden: !!document.hidden}); }catch(e){} });
+});
 
 /* ---------- заявки (у админа) ---------- */
 function renderReqs(){
@@ -468,7 +487,16 @@ function startPeer(){
   peer.on('call', call=>{
     const md = call.metadata||{};
     const m = member(md.from);
-    if(!m || !md.token || m.token!==md.token){ log('call rejected: no pass'); try{call.close();}catch(e){} return; }
+    if(!m || !md.token || m.token!==md.token){
+      log('call rejected: no pass');
+      try{call.close();}catch(e){}
+      // объясняем звонящему, почему его не слышно
+      try{
+        const cb = peer.connect(call.peer);
+        cb.on('open', ()=>{ try{ cb.send({t:'bad-pass'}); }catch(e){} setTimeout(()=>{try{cb.close()}catch(e){}}, 1200); });
+      }catch(e){}
+      return;
+    }
     if(activeCall || incomingCall){ try{call.close();}catch(e){} return; }
     incomingCall = call;
     $('inAvatar').textContent=m.emoji; $('inName').textContent=m.label;
@@ -523,6 +551,13 @@ function onData(c, d){
     toast('Рамиль отклонил запрос.', 6000);
     setTimeout(()=>location.reload(), 1500);
   }
+  else if(d.t==='bad-pass'){
+    endEverything('Ваш пропуск здесь не действует — похоже, вход делали заново в другом браузере. Нажмите внизу «выйти и сменить, кто я» и запросите доступ ещё раз.');
+  }
+  else if(d.t==='hb'){
+    const s = c._slug;
+    if(s){ lastHb[s]=Date.now(); hiddenMap[s]=!!d.hidden; refreshDot(s); }
+  }
   else if(d.t==='yield-please'){
     // другое устройство того же человека просит отпустить имя; в разговоре — не отпускаем
     if(!activeCall && !incomingCall) yieldTab();
@@ -575,7 +610,9 @@ function ensureLink(slug){
   }catch(e){ scheduleRetry(slug); }
 }
 function bindLink(slug, c){
+  c._slug = slug;
   links[slug]=c; setOnline(slug,true);
+  try{ if(c.open) c.send({t:'hb', hidden: !!document.hidden}); }catch(e){}
   c.on('data', d=>onData(c,d));
   if(isAdmin){ try{ c.send({t:'roster', roster, auth: me.token}); }catch(e){} }
   c.on('close', ()=>{ if(links[slug]===c){ setOnline(slug,false); scheduleRetry(slug); } });
