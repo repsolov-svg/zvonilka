@@ -34,6 +34,7 @@
   .btn.red{background:var(--red);}
   .btn.ghost{background:#E7EBF5; color:var(--dark);}
   .btn.small{padding:14px; font-size:18px; border-radius:14px;}
+  .btn.huge{padding:28px; font-size:27px; border-radius:22px;}
   .btn[disabled]{opacity:.45; cursor:default;}
   .role-btn{margin-bottom:16px; font-size:24px; padding:24px;}
   .card{
@@ -187,6 +188,16 @@
   </div>
 </div>
 
+<!-- Экран: звонилка перехвачена другой вкладкой -->
+<div class="fullscreen" id="scrYield">
+  <div class="big-avatar">📵</div>
+  <div class="call-name" style="font-size:24px;">Звонилка открыта<br>в другом окне</div>
+  <div class="call-state">Работать может только одно окно.<br>Нажмите, чтобы вернуть её сюда.</div>
+  <div class="call-actions">
+    <button class="btn green" id="btnReclaim" style="max-width:320px;">Вернуть сюда</button>
+  </div>
+</div>
+
 <div id="toast"></div>
 <div id="debugLog"></div>
 
@@ -317,7 +328,7 @@ function renderPeople(){
           <div class="pstatus"><span class="dot" id="dot-${m.slug}"></span><span id="st-${m.slug}">проверяем…</span></div>
         </div>
       </div>
-      <button class="btn green" data-call="${m.slug}">📞 Позвонить</button>`;
+      <button class="btn green ${isAdmin?'':'huge'}" data-call="${m.slug}">📞 Позвонить</button>`;
     wrap.appendChild(card);
   });
   wrap.querySelectorAll('[data-call]').forEach(b=> b.addEventListener('click', ()=>{ unlockAudio(); startCall(b.dataset.call); }));
@@ -376,9 +387,37 @@ function broadcastRoster(){
   Object.values(links).forEach(c=>{ try{ if(c.open) c.send({t:'roster', roster}); }catch(e){} });
 }
 
+/* ---------- одна активная вкладка ---------- */
+const TAB_NONCE = rand(8);
+const bc = ('BroadcastChannel' in window) ? new BroadcastChannel('zv-tabs') : null;
+if(bc){
+  bc.onmessage = ev=>{
+    const d = ev.data||{};
+    if(d.claim && me && d.claim===me.slug && d.nonce!==TAB_NONCE){
+      // другая вкладка забирает имя — уступаем
+      yieldTab();
+    }
+  };
+}
+function yieldTab(){
+  if(activeCall || incomingCall) endEverything();
+  if(peer){ try{ peer.destroy(); }catch(e){} peer=null; }
+  Object.keys(retries).forEach(k=>clearTimeout(retries[k]));
+  show('scrYield');
+}
+$('btnReclaim').addEventListener('click', ()=>{
+  unlockAudio();
+  if(me && me.token) { show('scrHome'); startPeer(); }
+  else if(me) { show('scrWait'); startPeer(); }
+  else location.reload();
+});
+window.addEventListener('pagehide', ()=>{ if(peer){ try{ peer.destroy(); }catch(e){} } });
+
 /* ---------- PeerJS ---------- */
+let idRetryN = 0;
 function startPeer(){
   if(peer) return;
+  if(bc){ try{ bc.postMessage({claim: me.slug, nonce: TAB_NONCE}); }catch(e){} }
   setConn('Подключаемся…');
   const opts = { config:{ iceServers: ICE_SERVERS }, debug:1 };
   const srv = new URLSearchParams(location.search).get('srv');
@@ -428,12 +467,18 @@ function startPeer(){
   peer.on('error', err=>{
     log('peer error', err.type, err.message||'');
     if(err.type==='unavailable-id'){
-      setConn('Ошибка');
-      toast('Звонилка уже открыта на другом устройстве под этим именем. Закройте её там.', 8000);
+      // имя ещё занято (старая вкладка/устройство) — ждём освобождения и пробуем сами
+      idRetryN++;
+      try{ peer.destroy(); }catch(e){}
+      peer=null;
+      setConn('Ваше имя занято другим окном — освобождаем, попытка '+idRetryN+'…');
+      if(idRetryN===3) toast('Похоже, звонилка открыта где-то ещё (другая вкладка или устройство). Закройте её там — здесь всё подключится само.', 9000);
+      setTimeout(startPeer, 4000);
     } else if(err.type!=='peer-unavailable'){
       setConn('Нет связи с сервером, пробуем ещё…');
     }
   });
+  peer.on('open', ()=>{ idRetryN=0; });
 }
 function setConn(s){ $('connState').textContent=s; const w=$('waitState'); if(w) w.textContent=s; }
 
