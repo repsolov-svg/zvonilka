@@ -152,7 +152,7 @@
   <div class="statusbar">
     <span id="connState">Подключаемся…</span><br>
     <a class="small" href="#" id="changeRole">выйти и сменить, кто я</a><br>
-    <span style="opacity:.55">версия 4</span>
+    <span style="opacity:.55">версия 5</span>
   </div>
 </div>
 
@@ -589,7 +589,7 @@ function scheduleRetry(slug){
 /* ---------- медиа ---------- */
 async function getMedia(){
   const tries=[
-    { video:{ width:{ideal:960}, height:{ideal:540}, facingMode:'user' },
+    { video:{ width:{ideal:1280}, height:{ideal:720}, frameRate:{ideal:30}, facingMode:'user' },
       audio:{ echoCancellation:true, noiseSuppression:true, autoGainControl:true } },
     { video:true, audio:true },
     { video:false, audio:{ echoCancellation:true, noiseSuppression:true, autoGainControl:true } },
@@ -668,6 +668,23 @@ function connected(slug, remoteStream){
     $('callTimer').textContent=String(Math.floor(s/60)).padStart(2,'0')+':'+String(s%60).padStart(2,'0');
   },1000);
   if('wakeLock' in navigator){ navigator.wakeLock.request('screen').then(w=>wakeLock=w).catch(()=>{}); }
+  // поднимаем битрейт видео — иначе браузер жмёт картинку сильнее нужного
+  setTimeout(()=>{
+    try{
+      const pc = activeCall && activeCall.peerConnection;
+      if(!pc) return;
+      pc.getSenders().forEach(s=>{
+        if(s.track && s.track.kind==='video'){
+          const p = s.getParameters();
+          p.encodings = (p.encodings && p.encodings.length) ? p.encodings : [{}];
+          p.encodings[0].maxBitrate = 2500000; // ~2.5 Мбит/с
+          p.encodings[0].scaleResolutionDownBy = 1;
+          p.degradationPreference = 'maintain-resolution';
+          s.setParameters(p).catch(()=>{});
+        }
+      });
+    }catch(e){ log('bitrate tune fail', e); }
+  }, 1000);
 }
 
 $('btnMic').addEventListener('click', ()=>{
